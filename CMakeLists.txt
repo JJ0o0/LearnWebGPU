@@ -17,6 +17,13 @@ add_subdirectory(external/webgpu)
 
 add_executable(${CMAKE_PROJECT_NAME}
     "src/main.cpp"
+
+    "src/core/instance.cpp"
+    "src/core/adapter.cpp"
+    "src/core/device.cpp"
+
+    "src/diagnostics/inspect.cpp"
+    "src/diagnostics/log.cpp"
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME}
