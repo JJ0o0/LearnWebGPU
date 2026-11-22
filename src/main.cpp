@@ -38,80 +38,88 @@ void log_callback(LogLevel level, std::string_view message, void*) {
     output << level_str << ": " << message << '\n';
 }
 
+void on_device_lost(WGPUDevice const*, WGPUDeviceLostReason reason, WGPUStringView message, void*, void*) {
+    std::ostringstream output;
+    output 
+        << "Device was lost: reason " << reason
+        << " (" << to_std_string_view(message) << ")";
+
+    detail::emit_log(LogLevel::Warning, output.str());
+}
+
+void on_device_error(WGPUDevice const*, WGPUErrorType type, WGPUStringView message, void*, void*) {
+    std::ostringstream output;
+    output 
+        << "Uncaptured device error: type " << type
+        << " (" << to_std_string_view(message) << ")";
+
+    detail::emit_log(LogLevel::Error, output.str());
+}
+
+WGPURequestAdapterOptions get_adapter_options() {
+    WGPURequestAdapterOptions options = {};
+    options.nextInChain = nullptr;
+
+    return options;
+}
+
+WGPUDeviceDescriptor get_device_descriptor(const char* label, const char* default_queue_label) {
+    WGPUDeviceDescriptor descriptor = WGPU_DEVICE_DESCRIPTOR_INIT;
+    descriptor.nextInChain = nullptr;
+    descriptor.label = to_wgpu_string_view(label);
+    descriptor.requiredFeatureCount = 0;
+    descriptor.requiredFeatures = nullptr;
+
+    descriptor.defaultQueue.label = to_wgpu_string_view(default_queue_label);
+
+    descriptor.deviceLostCallbackInfo.callback = on_device_lost;
+    descriptor.deviceLostCallbackInfo.mode = WGPUCallbackMode_AllowProcessEvents;
+
+    descriptor.uncapturedErrorCallbackInfo.callback = on_device_error;
+
+    return descriptor;
+}
+
 int main() {
     // Log Callback
     set_log_callback(log_callback);
 
     // Instance
-    auto instance_result = Instance::create();
-    if (!instance_result.has_value()) {
-        detail::emit_log(LogLevel::Error, instance_result.error().message);
-        return 1;
-    }
+    detail::emit_log(LogLevel::Info, "Creating Instance...");
+        auto instance_result = Instance::create();
+        if (!instance_result.has_value()) {
+            detail::emit_log(LogLevel::Error, instance_result.error().message);
+            return 1;
+        }
 
-    Instance instance = std::move(instance_result).value();
+        Instance instance = std::move(instance_result).value();
+    detail::emit_log(LogLevel::Info, "Instance created successfully!");
 
     // Adapter
-    WGPURequestAdapterOptions adapter_options = {};
-    adapter_options.nextInChain = nullptr;
+    detail::emit_log(LogLevel::Info, "Requesting Adapter...");
+        WGPURequestAdapterOptions adapter_options = get_adapter_options();
+        auto adapter_result = Adapter::request(instance.get(), &adapter_options);
+        if (!adapter_result.has_value()) {
+            detail::emit_log(LogLevel::Error, adapter_result.error().message);
+            return 1;
+        }
 
-    auto adapter_result = Adapter::request(instance.get(), &adapter_options);
-    if (!adapter_result.has_value()) {
-        detail::emit_log(LogLevel::Error, adapter_result.error().message);
-        return 1;
-    }
-
-    Adapter adapter = std::move(adapter_result).value();
-    inspect_gpu(adapter.get());
+        Adapter adapter = std::move(adapter_result).value();
+    detail::emit_log(LogLevel::Info, "Got Adapter!");
+    inspect_gpu(adapter.get(), false);
 
     // Device
-    WGPUDeviceDescriptor device_descriptor = WGPU_DEVICE_DESCRIPTOR_INIT;
-    device_descriptor.nextInChain = nullptr;
-    device_descriptor.label = to_wgpu_string_view("Pipus Abobora");
-    device_descriptor.requiredFeatureCount = 0;
-    device_descriptor.requiredFeatures = nullptr;
-    device_descriptor.defaultQueue.label = to_wgpu_string_view("Pipus Abobora Queue");
+    detail::emit_log(LogLevel::Info, "Requesting Device...");
+        WGPUDeviceDescriptor device_descriptor = get_device_descriptor("Pipous Abobora", "Pipous Abobora Queue");
 
-    auto on_device_lost = [](
-        WGPUDevice const*,
-        WGPUDeviceLostReason reason,
-        WGPUStringView message,
-        void*, void*
-    ) {
-        std::ostringstream output;
-        output 
-            << "Device was lost: reason " << reason
-            << " (" << to_std_string_view(message) << ")";
+        auto device_result = Device::request(instance.get(), adapter.get(), &device_descriptor);
+        if (!device_result.has_value()) {
+            detail::emit_log(LogLevel::Error, device_result.error().message);
+            return 1;
+        }
 
-        detail::emit_log(LogLevel::Warning, output.str());
-    };
-
-    device_descriptor.deviceLostCallbackInfo.callback = on_device_lost;
-    device_descriptor.deviceLostCallbackInfo.mode = WGPUCallbackMode_AllowProcessEvents;
-
-    auto on_device_error = [](
-        WGPUDevice const*,
-        WGPUErrorType type,
-        WGPUStringView message,
-        void*, void*
-    ) {
-        std::ostringstream output;
-        output 
-            << "Uncaptured device error: type " << type
-            << " (" << to_std_string_view(message) << ")";
-
-        detail::emit_log(LogLevel::Error, output.str());
-    };
-
-    device_descriptor.uncapturedErrorCallbackInfo.callback = on_device_error;
-
-    auto device_result = Device::request(instance.get(), adapter.get(), &device_descriptor);
-    if (!device_result.has_value()) {
-        detail::emit_log(LogLevel::Error, device_result.error().message);
-        return 1;
-    }
-
-    Device device = std::move(device_result).value();
+        Device device = std::move(device_result).value();
+    detail::emit_log(LogLevel::Info, "Got Device!");
 
     wgpuInstanceProcessEvents(instance.get());
     return 0;
